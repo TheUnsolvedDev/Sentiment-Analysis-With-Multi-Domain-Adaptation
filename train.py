@@ -11,8 +11,6 @@ from params import *
 
 callbacks = [
     tf.keras.callbacks.EarlyStopping(monitor='loss', patience=7),
-    tf.keras.callbacks.ModelCheckpoint(
-        filepath='modelA*.h5', save_weights_only=True, monitor='loss', save_best_only=True),
     tf.keras.callbacks.TensorBoard(
         log_dir='./logs', histogram_freq=1, write_graph=True),
     tf.keras.callbacks.ReduceLROnPlateau(
@@ -70,6 +68,7 @@ if __name__ == '__main__':
     star_model.summary()
     star_model.compile(loss='binary_crossentropy',
                        optimizer='adam', metrics=['accuracy'])
+    # star_model.load_weights('modelA*.h5')
     history = star_model.fit(datas[0], epochs=EPOCHS,
                              validation_data=datas[0], callbacks=callbacks)
     # plot_result(history, 'accuracy')
@@ -80,7 +79,8 @@ if __name__ == '__main__':
     star_model.compile(loss=ewc_loss_fn, optimizer='adam',
                        metrics=['accuracy'])
     history = star_model.fit(datas[1], epochs=EPOCHS,
-                             validation_data=datas[0], callbacks=callbacks + [CustomCallback('B', 'A')])
+                             validation_data=datas[0], callbacks=callbacks + [tf.keras.callbacks.ModelCheckpoint(
+                                 filepath='modelA*.h5', save_weights_only=True, monitor='loss', save_best_only=True), CustomCallback('B', 'A')])
     # plot_result(history, 'accuracy')
 
     theta = star_model.weights
@@ -90,7 +90,8 @@ if __name__ == '__main__':
     star_model.compile(loss=ewc_loss_fn, optimizer='adam',
                        metrics=['accuracy'])
     history = star_model.fit(datas[2], epochs=EPOCHS,
-                             validation_data=datas[1], callbacks=callbacks + [CustomCallback('C', 'B')])
+                             validation_data=datas[1], callbacks=callbacks + [tf.keras.callbacks.ModelCheckpoint(
+                                 filepath='modelA*.h5', save_weights_only=True, monitor='loss', save_best_only=True), CustomCallback('C', 'B')])
 
     theta = star_model.weights
     theta_star = [[tf.constant(i)
@@ -99,7 +100,8 @@ if __name__ == '__main__':
     star_model.compile(loss=ewc_loss_fn, optimizer='adam',
                        metrics=['accuracy'])
     history = star_model.fit(datas[3], epochs=EPOCHS,
-                             validation_data=datas[2], callbacks=callbacks + [CustomCallback('D', 'C')])
+                             validation_data=datas[2], callbacks=callbacks + [tf.keras.callbacks.ModelCheckpoint(
+                                 filepath='modelA*.h5', save_weights_only=True, monitor='loss', save_best_only=True), CustomCallback('D', 'C')])
 
     star_model.summary()
     accA = star_model.evaluate(datas[0])[1]

@@ -4,4 +4,5 @@
 Task A - accuracy: 0.9490 \
 Task B - accuracy: 0.9070 \
 Task C - accuracy: 0.8410 \
-Task D - accuracy: 0.8870 \
+Task D - accuracy: 0.8870 
+

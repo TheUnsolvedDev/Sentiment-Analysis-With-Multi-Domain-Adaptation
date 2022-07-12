@@ -1,10 +1,23 @@
 import numpy as np
-import tensorflow as tf
 import matplotlib.pyplot as plt
+import tensorflow as tf
+import tensorflow_datasets as tfds
+import os
 from tqdm import tqdm
 
-from dataset import Data
-from model import Lenet5, DNN, ewc_fisher_matrix
+from dataset import Dataset
+from model import classification_model, ewc_fisher_matrix
+from params import *
+
+callbacks = [
+    tf.keras.callbacks.EarlyStopping(monitor='loss', patience=7),
+    tf.keras.callbacks.ModelCheckpoint(
+        filepath='modelA*.h5', save_weights_only=True, monitor='loss', save_best_only=True),
+    tf.keras.callbacks.TensorBoard(
+        log_dir='./logs', histogram_freq=1, write_graph=True),
+    tf.keras.callbacks.ReduceLROnPlateau(
+        monitor='loss', factor=0.1, patience=4, verbose=1, mode='auto', min_delta=0.0001, cooldown=0, min_lr=0),
+]
 
 
 class CustomCallback(tf.keras.callbacks.Callback):
@@ -28,35 +41,18 @@ class CustomCallback(tf.keras.callbacks.Callback):
         plt.show()
 
 
-callbacks = [
-    tf.keras.callbacks.EarlyStopping(monitor='accuracy', patience=7),
-    tf.keras.callbacks.ModelCheckpoint(
-        filepath='model.h5', save_weights_only=True, monitor='accuracy', save_best_only=True),
-    tf.keras.callbacks.TensorBoard(
-        log_dir='./logs', histogram_freq=1, write_graph=True),
-    tf.keras.callbacks.ReduceLROnPlateau(
-        monitor='accuracy', factor=0.1, patience=4, verbose=1, mode='auto', min_delta=0.0001, cooldown=0, min_lr=0),
-]
-
-ewc_callbacks = [
-    tf.keras.callbacks.EarlyStopping(monitor='val_loss', patience=7),
-    tf.keras.callbacks.ModelCheckpoint(
-        filepath='modelB.h5', save_weights_only=True, monitor='val_loss', save_best_only=True),
-    tf.keras.callbacks.TensorBoard(
-        log_dir='./logs', histogram_freq=1, write_graph=True),
-    tf.keras.callbacks.ReduceLROnPlateau(
-        monitor='val_loss', factor=0.1, patience=4, verbose=1, mode='auto', min_delta=0.0001, cooldown=0, min_lr=0),
-]
+def plot_result(history, item):
+    plt.plot(history.history[item], label=item)
+    plt.plot(history.history["val_" + item], label="val_" + item)
+    plt.xlabel("Epochs")
+    plt.ylabel(item)
+    plt.title("Train and Validation {} Over Epochs".format(item), fontsize=14)
+    plt.legend()
+    plt.grid()
+    plt.show()
 
 
-def train(train_gen, epochs=100, model=None):
-    loss = tf.keras.losses.BinaryCrossentropy()
-    model.compile(loss=loss, optimizer='Adam', metrics=['accuracy'])
-    history = model.fit(train_gen, epochs=epochs, callbacks=callbacks)
-    return model
-
-
-def ewc_loss_fn(y_true, y_pred, lam=25):
+def ewc_loss_fn(y_true, y_pred, lam=0.5):
     total_loss = tf.keras.losses.binary_crossentropy(
         y_true, y_pred)
     for j in range(len(theta_star)):
@@ -68,34 +64,50 @@ def ewc_loss_fn(y_true, y_pred, lam=25):
     return total_loss
 
 
-def train_ewc(train_gen, val_gen, epochs=100, model=None):
-    model.compile(loss=ewc_loss_fn, optimizer='Adam', metrics=['accuracy'])
-    history = model.fit(train_gen, validation_data=(
-        val_gen), epochs=epochs, callbacks=ewc_callbacks + [CustomCallback('A', 'B')])
-    return model
-
-
 if __name__ == '__main__':
-    tasks = Data()
-    task_1_gen = tasks.task(1)
-    task_2_gen = tasks.task(2)
-    task_3_gen = tasks.task(3)
-    task_4_gen = tasks.task(4)
+    datas = [Dataset(i).get_data() for i in range(4)]
+    star_model = classification_model()
+    star_model.summary()
+    star_model.compile(loss='binary_crossentropy',
+                       optimizer='adam', metrics=['accuracy'])
+    history = star_model.fit(datas[0], epochs=EPOCHS,
+                             validation_data=datas[0], callbacks=callbacks)
+    # plot_result(history, 'accuracy')
 
-    star = DNN()
-    star = train(task_1_gen, model=star, epochs=100)
-    # star.load_weights('model.h5')
+    theta = star_model.weights
+    theta_star = [[tf.constant(i) for i in star_model.get_weights()]]
+    I = [ewc_fisher_matrix(datas[0], star_model)]
+    star_model.compile(loss=ewc_loss_fn, optimizer='adam',
+                       metrics=['accuracy'])
+    history = star_model.fit(datas[1], epochs=EPOCHS,
+                             validation_data=datas[0], callbacks=callbacks + [CustomCallback('B', 'A')])
+    # plot_result(history, 'accuracy')
 
-    I = [ewc_fisher_matrix([task_1_gen], star)]
-    theta = star.weights
-    theta_star = [[tf.constant(i) for i in star.get_weights()]]
-    star = train_ewc(task_2_gen, task_1_gen, model=star)
+    theta = star_model.weights
+    theta_star = [[tf.constant(i)
+                   for i in star_model.get_weights()]] + theta_star
+    I = [ewc_fisher_matrix(datas[1], star_model)] + I
+    star_model.compile(loss=ewc_loss_fn, optimizer='adam',
+                       metrics=['accuracy'])
+    history = star_model.fit(datas[2], epochs=EPOCHS,
+                             validation_data=datas[1], callbacks=callbacks + [CustomCallback('C', 'B')])
 
-    I = [ewc_fisher_matrix([task_1_gen], star)] + I
-    theta = star.weights
-    theta_star = [[tf.constant(i) for i in star.get_weights()]] + theta_star
-    star = train_ewc(task_3_gen, task_2_gen, model=star)
+    theta = star_model.weights
+    theta_star = [[tf.constant(i)
+                   for i in star_model.get_weights()]] + theta_star
+    I = [ewc_fisher_matrix(datas[2], star_model)] + I
+    star_model.compile(loss=ewc_loss_fn, optimizer='adam',
+                       metrics=['accuracy'])
+    history = star_model.fit(datas[3], epochs=EPOCHS,
+                             validation_data=datas[2], callbacks=callbacks + [CustomCallback('D', 'C')])
 
-    star.evaluate(task_1_gen)
-    star.evaluate(task_2_gen)
-    star.evaluate(task_3_gen)
+    star_model.summary()
+    accA = star_model.evaluate(datas[0])[1]
+    accB = star_model.evaluate(datas[1])[1]
+    accC = star_model.evaluate(datas[2])[1]
+    accD = star_model.evaluate(datas[3])[1]
+
+    plt.plot([accA, accB, accC, accD])
+    plt.xlabel('Task Number')
+    plt.ylabel('Accuracy')
+    plt.show()
